@@ -4,7 +4,6 @@ import sqlalchemy as sa
 import sqlalchemy.exc
 from sqlalchemy.orm import joinedload, selectinload
 
-
 from app import models, db
 from app.core.config import base_config
 from app.models import AutoState, ExchangeName, AutoStatus
@@ -48,13 +47,8 @@ def init_purchase(bybit_sym: str, binance_sym: str, bybit: BybitExchange, binanc
                                 (telegram_id, "ERROR", f"\nОшибка при размещении ордера"))
 
 
-def sell(symbol: str, ticker: str, quantity: float, price: float, exchange: Exchange,
+def sell(symbol: str, quantity: float, price: float, exchange: Exchange,
          telegram_id: str):
-    target_balance, _ = exchange.get_balance(ticker)
-
-    if target_balance < quantity:
-        raise ExchangeInsufficientFunds(f"На бирже {exchange.name} не хватает средств для продажи {quantity} {symbol}")
-
     order_id, order_status = exchange.place_order(
         symbol=symbol,
         side=OrderSide.SELL,
@@ -74,12 +68,8 @@ def sell(symbol: str, ticker: str, quantity: float, price: float, exchange: Exch
                                 (telegram_id, "ERROR", f"Ошибка при размещении ордера..."))
 
 
-def buy(symbol: str, ticker: str, quantity: float, price: float, exchange: Exchange,
+def buy(symbol: str, quantity: float, price: float, exchange: Exchange,
         telegram_id: str):
-    target_balance, _ = exchange.get_balance(ticker)
-    if quantity > (target_balance * 1 / price):
-        raise ExchangeInsufficientFunds(f"\nНа бирже {exchange.name} не хватает средств для покупки <b>{quantity} {symbol}</b>")
-
     order_id, order_status = exchange.place_order(
         symbol=symbol,
         side=OrderSide.BUY,
@@ -89,13 +79,30 @@ def buy(symbol: str, ticker: str, quantity: float, price: float, exchange: Excha
     )
 
     db.bot_sender.send_task('debug', (
-        telegram_id, "INFO", f"\nРазмещен ордер на покупку <b>{quantity} {symbol} </b> на бирже {exchange.name}\n ID оредра: <b> {order_id} </b>"))
+        telegram_id, "INFO",
+        f"\nРазмещен ордер на покупку <b>{quantity} {symbol} </b> на бирже {exchange.name}\n ID оредра: <b> {order_id} </b>"))
 
     if exchange.order_status_map.get(order_status) != OrderStatus.REJECTED:
         return order_id
     else:
         db.bot_sender.send_task('debug',
                                 (telegram_id, "ERROR", f"Ошибка при размещении ордера..."))
+
+
+def check_sell(exchange: Exchange, ticker: str, quantity: float):
+    target_balance, _ = exchange.get_balance(ticker)
+    if target_balance < quantity:
+        return False
+
+    return True
+
+
+def check_buy(exchange: Exchange, ticker: str, quantity: float, price: float):
+    target_balance, _ = exchange.get_balance(ticker)
+    if quantity > (target_balance * 1 / price):
+        return False
+
+    return True
 
 
 def cancel_orders(symbol_binance, symbol_bybit, bybit, binance, order_id_binance, order_id_bybit, user_telegram_id):
@@ -119,10 +126,10 @@ def get_common_balance(bybit, binance, bybit_price, binance_price, target_ticker
     usdt_balance_binance, _ = binance.get_balance(BASE_SYMBOL)
     usdt_balance_bybit, _ = bybit.get_balance(BASE_SYMBOL)
     target_balance_binance, _ = binance.get_balance(target_ticker)
-    target_balance_bybit, _  = bybit.get_balance(target_ticker)
+    target_balance_bybit, _ = bybit.get_balance(target_ticker)
 
     return (usdt_balance_binance + target_balance_binance * binance_price) + (
-                usdt_balance_bybit + target_balance_bybit * bybit_price)
+            usdt_balance_bybit + target_balance_bybit * bybit_price)
 
 
 def stop(user):
@@ -203,7 +210,7 @@ async def auto_mode():
 
                         order_id_bybit, order_id_binance = init_purchase(SYMBOL_BYBIT, SYMBOL_BINANCE, bybit, binance,
                                                                          bybit_price, binance_price,
-                                                                         user.volume, user.telegram_id)
+                                                                         user.init_volume, user.telegram_id)
                         user.current_state = AutoState.WAIT_FILLED
                         user.order_id_bybit = order_id_bybit
                         user.order_id_binance = order_id_binance
@@ -225,6 +232,8 @@ async def auto_mode():
                         if (bybit_status == OrderStatus.FILLED and
                                 binance_status == OrderStatus.FILLED):
                             user.current_state = AutoState.IN_PROGRESS
+                            user.order_id_bybit = None
+                            user.order_id_binance = None
 
                             if user.debug_mode:
                                 db.bot_sender.send_task('debug', (user.telegram_id, "INFO",
@@ -235,7 +244,7 @@ async def auto_mode():
 
                                 if user.debug_mode:
                                     db.bot_sender.send_task('debug', (user.telegram_id, "INFO",
-                                                                  f"\nОбщий баланс на момент старта алгоритма равен: <b>{user.profit} {BASE_SYMBOL}</b>"))
+                                                                      f"\nОбщий баланс на момент старта алгоритма равен: <b>{user.profit} {BASE_SYMBOL}</b>"))
                             elif user.status == AutoStatus.PLAY:
                                 profit = get_common_balance(bybit, binance, bybit_price, binance_price,
                                                             user.target_coin.ticker) - user.profit
@@ -246,13 +255,17 @@ async def auto_mode():
                         else:
                             if ((datetime.now() - user.order_time_bybit).seconds // 60 > user.wait_order_minutes) or (
                                     (datetime.now() - user.order_time_binance).seconds // 60 > user.wait_order_minutes):
-                                cancel_orders(SYMBOL_BINANCE, SYMBOL_BYBIT, bybit, binance, user.order_id_binance,
-                                              user.order_id_bybit, user.telegram_id)
+
                                 if user.status == AutoStatus.STARTED:
-                                    user.current_state = AutoState.INITIAL
+                                    # db.bot_sender.send_task('debug',
+                                    #                         (user.telegram_id, "WARNING", f"Не получилось совершить стартовую закупку"))
+                                    # user.current_state = AutoState.INITIAL
+                                    pass
                                 elif user.status == AutoStatus.PLAY:
+                                    cancel_orders(SYMBOL_BINANCE, SYMBOL_BYBIT, bybit, binance, user.order_id_binance,
+                                                  user.order_id_bybit, user.telegram_id)
                                     user.current_state = AutoState.IN_PROGRESS
-                                db.bot_sender.send_task('orders_canceled', (user.telegram_id,))
+                                    db.bot_sender.send_task('orders_canceled', (user.telegram_id,))
 
                     # an arbitration situation occurred
                     elif (user.current_state == AutoState.IN_PROGRESS) \
@@ -262,40 +275,59 @@ async def auto_mode():
                             db.bot_sender.send_task('debug', (user.telegram_id, "INFO",
                                                               f"\nПроизошла арбитражная ситуация:\nЦена на Bybit: <b>{bybit_price} {BASE_SYMBOL} </b> \nЦена на Binance <b>{binance_price} {user.target_coin.ticker}</b>\nПотенциальный профит <b>{abs(user.volume * bybit_price - user.volume * binance_price)} {BASE_SYMBOL}</b>"))
 
+                        user.status = AutoStatus.PLAY
+
                         # bybit > binance
                         if bybit_price >= binance_price:
-
                             try:
-                                order_id_bybit = sell(SYMBOL_BYBIT, user.target_coin.ticker, user.volume, bybit_price,
-                                                      bybit,
-                                                      user.telegram_id)
+                                if check_sell(bybit, user.target_coin.ticker, user.volume) and check_buy(
+                                        binance, BASE_SYMBOL, user.volume, binance_price):
 
-                                order_id_binance = buy(SYMBOL_BINANCE, BASE_SYMBOL, user.volume, binance_price, binance,
-                                                       user.telegram_id)
+                                    order_id_bybit = sell(SYMBOL_BYBIT, user.volume,
+                                                          bybit_price,
+                                                          bybit,
+                                                          user.telegram_id)
+
+                                    order_id_binance = buy(SYMBOL_BINANCE, user.volume, binance_price, binance,
+                                                           user.telegram_id)
+
+                                    user.current_state = AutoState.WAIT_FILLED
+                                    user.order_id_bybit = order_id_bybit
+                                    user.order_id_binance = order_id_binance
+                                    user.order_time_bybit = datetime.now()
+                                    user.order_time_binance = datetime.now()
+                                else:
+                                    raise ExchangeInsufficientFunds()
                             except ExchangeInsufficientFunds:
                                 db.bot_sender.send_task('need_transfer', (user.telegram_id,))
-                                continue
+
 
                         # binance > bybit
                         else:
                             try:
-                                order_id_binance = sell(SYMBOL_BINANCE, user.target_coin.ticker, user.volume,
-                                                        binance_price,
-                                                        binance,
-                                                        user.telegram_id)
+                                if check_sell(binance, user.target_coin.ticker, user.volume) and check_buy(
+                                        bybit, BASE_SYMBOL, user.volume, bybit_price):
 
-                                order_id_bybit = buy(SYMBOL_BYBIT, BASE_SYMBOL, user.volume, bybit_price, bybit,
-                                                     user.telegram_id)
+                                    order_id_binance = sell(SYMBOL_BINANCE, user.volume,
+                                                            binance_price,
+                                                            binance,
+                                                            user.telegram_id)
+                                    order_id_bybit = buy(SYMBOL_BYBIT, user.volume, bybit_price, bybit,
+                                                         user.telegram_id)
+
+                                    user.current_state = AutoState.WAIT_FILLED
+                                    user.order_id_bybit = order_id_bybit
+                                    user.order_id_binance = order_id_binance
+                                    user.order_time_bybit = datetime.now()
+                                    user.order_time_binance = datetime.now()
+                                else:
+                                    raise ExchangeInsufficientFunds()
+
+
                             except ExchangeInsufficientFunds:
                                 db.bot_sender.send_task('need_transfer', (user.telegram_id,))
-                                continue
 
-                        user.current_state = AutoState.WAIT_FILLED
-                        user.order_id_bybit = order_id_bybit
-                        user.order_id_binance = order_id_binance
-                        user.order_time_bybit = datetime.now()
-                        user.order_time_binance = datetime.now()
-                        user.status = AutoStatus.PLAY
+
 
             except Exception as e:
                 db.bot_sender.send_task('debug',
@@ -303,7 +335,6 @@ async def auto_mode():
 
                 # stop auto mode
                 stop(user)
-                db.bot_sender.send_task('stop_auto', (user.telegram_id,))
 
             try:
                 await session.commit()
