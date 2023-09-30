@@ -7,7 +7,7 @@ from .helper import Status
 
 from .user import (
     UserInDb, UserCreate, UserBundleAdd,
-    UserBaseCoinUpdate, UserThresholdUpdate, UserVolumeUpdate,
+    UserThresholdUpdate, UserVolumeUpdate,
     UserEpsilonUpdate, UserDifferenceUpdate, UserAutoUpdate,
     UserWaitOrderMinutesUpdate, UserTestAPIUpdate, UserExchangeUpdate,
     UserAutoStateUpdate, UserAutoForceStop, UserDebugUpdateUpdate,

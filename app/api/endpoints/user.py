@@ -69,7 +69,7 @@ async def read_user(
     """
     API получения списка всех пользователей
     """
-    user = await helpers.get_user(session=session, telegram_id=telegram_id, load_base_coin=True, load_target_coin=True)
+    user = await helpers.get_user(session=session, telegram_id=telegram_id, load_target_coin=True)
 
     return user
 
@@ -79,10 +79,7 @@ async def read_users(session: db.AsyncSession = Depends(db.get_session)):
     """
     API получения списка всех пользователей
     """
-    users = (await session.scalars(sa.select(models.User).options(
-        joinedload(models.User.base_coin),
-        joinedload(models.User.target_coin)
-    ))).all()
+    users = (await session.scalars(sa.select(models.User).options(joinedload(models.User.target_coin)))).all()
 
     return users
 
@@ -95,7 +92,7 @@ async def read_user_base_coin_id(
     """
     API получения базовой монеты пользовтеля.
     """
-    user = await helpers.get_user(session=session, telegram_id=telegram_id, load_base_coin=True)
+    user = await helpers.get_user(session=session, telegram_id=telegram_id)
 
     return user.base_coin
 
@@ -314,27 +311,6 @@ async def update_user_exchanges(
     return schemas.Status(status='success')
 
 
-@router.put("/base_coin_id", response_model=schemas.Status)
-async def update_user_base_coin_id(
-        data: schemas.UserBaseCoinUpdate,
-        session: db.AsyncSession = Depends(db.get_session)
-):
-    """
-    API настройки базовой монеты пользователя.
-    """
-    user = await helpers.get_user(session=session, telegram_id=data.telegram_id)
-
-    user.base_coin_id = data.base_coin_id
-    try:
-        await session.commit()
-    except sa.exc.DBAPIError as e:
-        await session.rollback()
-
-        helpers.abort(status.HTTP_400_BAD_REQUEST, detail=helpers.error_detail(e))
-
-    return schemas.Status(status='success')
-
-
 @router.put("/target_coin_id", response_model=schemas.Status)
 async def update_user_target_coin_id(
         data: schemas.UserTargetCoinUpdate,
@@ -367,6 +343,27 @@ async def update_user_threshold(
     user = await helpers.get_user(session=session, telegram_id=data.telegram_id)
 
     user.threshold = data.threshold
+    try:
+        await session.commit()
+    except sa.exc.DBAPIError as e:
+        await session.rollback()
+
+        helpers.abort(status.HTTP_400_BAD_REQUEST, detail=helpers.error_detail(e))
+
+    return schemas.Status(status='success')
+
+
+@router.put("/init_volume", response_model=schemas.Status)
+async def update_user_init_volume(
+        data: schemas.UserVolumeUpdate,
+        session: db.AsyncSession = Depends(db.get_session)
+):
+    """
+    API настройки объема стартовой закупки пользователя
+    """
+    user = await helpers.get_user(session=session, telegram_id=data.telegram_id)
+
+    user.init_volume = data.volume
     try:
         await session.commit()
     except sa.exc.DBAPIError as e:
@@ -510,37 +507,6 @@ async def update_user_wait_order_minutes(
         await session.rollback()
 
         helpers.abort(status.HTTP_400_BAD_REQUEST, detail=helpers.error_detail(e))
-
-    return schemas.Status(status='success')
-
-
-@router.put("/test_api", response_model=schemas.Status)
-async def update_user_test_api(
-        data: schemas.UserTestAPIUpdate,
-        session: db.AsyncSession = Depends(db.get_session)
-):
-    """
-    API настройки использования тестового режима автоматической торговли пользователя
-    """
-    send_restart_message = False
-
-    user = await helpers.get_user(session=session, telegram_id=data.telegram_id)
-    if user.auto:
-        send_restart_message = True
-        user.status = models.user.AutoStatus.ON_RESTART
-    else:
-        # FIX
-        user.test_api = data.test_api
-        user.status = models.user.AutoStatus.PLAY
-    try:
-        await session.commit()
-    except sa.exc.DBAPIError as e:
-        await session.rollback()
-
-        helpers.abort(status.HTTP_400_BAD_REQUEST, detail=helpers.error_detail(e))
-
-    if send_restart_message:
-        helpers.abort(status.HTTP_400_BAD_REQUEST, detail=details.RESTART_PROCESS_STARTED)
 
     return schemas.Status(status='success')
 
