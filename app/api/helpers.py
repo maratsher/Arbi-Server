@@ -59,7 +59,6 @@ def error_detail(e: sa.exc.DBAPIError) -> str:
 async def get_user(
         session: db.AsyncSession,
         telegram_id: str,
-        load_base_coin: bool = False,
         load_target_coin: bool = False,
         load_bundles: bool = False,
         load_exchanges: bool = False
@@ -69,7 +68,6 @@ async def get_user(
 
     :param session: Сессия БД.
     :param telegram_id: Идентификатор telegram пользователя.
-    :param load_base_coin: Загрузить расчетную монету пользователя.
     :param load_target_coin: Загрузить целевую монету пользователя.
     :param load_bundles: Загрузить связки пользователя.
     :param load_exchanges: Загрузить биржи пользователя.
@@ -78,8 +76,6 @@ async def get_user(
     """
     user_query = sa.select(models.User).where(models.User.telegram_id == telegram_id)
 
-    if load_base_coin:
-        user_query = user_query.options(joinedload(models.User.base_coin))
     if load_target_coin:
         user_query = user_query.options(joinedload(models.User.target_coin))
     if load_bundles:

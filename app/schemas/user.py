@@ -13,15 +13,16 @@ class UserInDb(APIBase):
     id: int
 
     telegram_id: str
-    base_coin: CoinInDb
+
     target_coin: CoinInDb
     threshold: float
+    init_volume: float
     volume: float
     epsilon: float
-    difference: float
-    auto: bool
-    test_api: bool
     wait_order_minutes: int
+
+    auto: bool
+
     debug_mode: int
 
 
@@ -31,12 +32,6 @@ class UserCreate(APIBase):
 
 class UserBundleAdd(APIBase):
     bundle_id: int = Field(..., ge=1, le=db_config.MAX_LEN_ID)
-
-
-class UserBaseCoinUpdate(APIBase):
-    telegram_id: str = Field(...)
-
-    base_coin_id: int = Field(..., ge=1, le=db_config.MAX_LEN_ID)
 
 
 class UserTargetCoinUpdate(APIBase):

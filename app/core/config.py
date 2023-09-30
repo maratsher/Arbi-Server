@@ -63,6 +63,8 @@ class Settings(BaseSettings):
     REDIS_PORT: str
     REDIS_PASSWORD: str
 
+    TEST_API: bool = Field(default=False)
+
     class Config:
         env_file = '.env'
         env_file_encoding = 'utf-8'
@@ -71,3 +73,4 @@ class Settings(BaseSettings):
 
 db_config = Database()
 base_config = Settings(_env_file='.env', _env_file_encoding='utf-8')
+print(base_config.TEST_API)

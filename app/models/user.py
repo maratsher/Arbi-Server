@@ -8,7 +8,6 @@ import sqlalchemy as sa
 import sqlalchemy.orm
 
 from app import db
-from app.models.exchange import ExchangeName
 
 if typing.TYPE_CHECKING:
     from .coin import Coin
@@ -42,16 +41,33 @@ class AutoStatus(IntEnum):
 class User(db.Base):
     """Модель таблицы пользователей.
 
-    :id: Уникальный идентификатор пользовтеля телеграм.
+    :id: Уникальный идентификатор пользователя.
 
-    :threshold: Порог для опреления арбитражной ситуации
-    :base_coin_id: Расчетная монета
-    :volume: Объем торгов
-    :epsilon: Погрешность при сравнении цен
-    :difference: Максимально допустимый процент различия балансов двух бирж
+    :telegram_id: Идентификатор telegram.
 
-    :auto: Автоматическая торговля
-    :current_state: Текущее состояние автоматической торговли
+    :target_coin_id: Целевая монета.
+
+    :threshold: Порог для определения арбитражной ситуации.
+    :init_volume: Объем стартовой закупки.
+    :volume: Объем торгов.
+    :epsilon: Погрешность при сравнении цен.
+    :wait_order_minutes: Время ожидания ордера.
+
+    :auto: Автоматическая торговля.
+    :current_state: Текущее состояние автоматической торговли.
+
+    :profit: Профит.
+
+    :debug_mode: Режим отладки.
+
+    :order_id_binance: Идентификатор ордера на Binance.
+    :order_id_bybit: Идентификатор ордера на Bybit.
+
+    :order_time_binance: Время размещения ордера на Binance.
+    :order_time_bybit: Время размещения ордера на Bybit.
+
+    :executed_binance: Выполненная сумма ордера на Binance.
+    :executed_bybit: Выполненная сумма ордера на Bybit.
 
     :created: Дата и время создания пользователя.
     """
@@ -59,13 +75,12 @@ class User(db.Base):
 
     telegram_id = sa.Column(sa.String, nullable=False, unique=True)
 
-    base_coin_id = sa.Column(sa.Integer, sa.ForeignKey('coin.id'), nullable=False, default=1)
     target_coin_id = sa.Column(sa.Integer, sa.ForeignKey('coin.id'), nullable=False, default=2)
 
     threshold = sa.Column(sa.Float, nullable=False, default=4)
-    volume = sa.Column(sa.Float, nullable=False, default=1000)
+    init_volume = sa.Column(sa.Float, nullable=False, default=1000)
+    volume = sa.Column(sa.Float, nullable=False, default=50)
     epsilon = sa.Column(sa.Float, nullable=False, default=0.1)
-    difference = sa.Column(sa.Float, nullable=False, default=40)
     wait_order_minutes = sa.Column(sa.Float, nullable=False, default=60)
 
     auto = sa.Column(sa.Boolean, nullable=False, default=False)
@@ -73,7 +88,6 @@ class User(db.Base):
 
     profit = sa.Column(sa.Float, nullable=False, default=0)
 
-    test_api = sa.Column(sa.Boolean, nullable=False, default=False)
     debug_mode = sa.Column(sa.Boolean, nullable=False, default=False)
 
     order_id_binance = sa.Column(sa.String, nullable=True)
@@ -82,19 +96,12 @@ class User(db.Base):
     order_time_binance = sa.Column(sa.DateTime, nullable=True)
     order_time_bybit = sa.Column(sa.DateTime, nullable=True)
 
-    on_skew = sa.Column(sa.Enum(ExchangeName), nullable=True)
+    executed_binance = sa.Column(sa.Float, nullable=True)
+    executed_bybit = sa.Column(sa.Float, nullable=True)
 
     status = sa.Column(sa.Enum(AutoStatus), nullable=True)
 
     created = sa.Column(sa.DateTime, nullable=False, default=sa.func.now())
-
-    base_coin: "Coin" = sa.orm.relationship(
-        'Coin',
-        lazy='raise_on_sql',
-        foreign_keys=[base_coin_id],
-        viewonly=True,
-        uselist=False
-    )
 
     target_coin: "Coin" = sa.orm.relationship(
         'Coin',
@@ -122,11 +129,15 @@ class User(db.Base):
 
     bundles_ids = property(lambda self: [bundle.id for bundle in self.bundles] if self.bundles else [])
 
-    exchanges = property(lambda self: [user_exchange.exchange for user_exchange in self.user_exchanges] if self.user_exchanges else [])
+    exchanges = property(
+        lambda self: [user_exchange.exchange for user_exchange in self.user_exchanges] if self.user_exchanges else []
+    )
+
+    def __str__(self):
+        return f'User #{self.id}'
 
     def __repr__(self):
-        return f'User id: {self.id}, threshold: {self.threshold}, base_coin_id: {self.base_coin_id},' \
-               f'volume {self.volume} created: {self.created}'
+        return f'User #{self.id}'
 
 
 class UserBundle(db.Base):

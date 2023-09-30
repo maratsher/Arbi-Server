@@ -1,13 +1,18 @@
-from .exchange import Exchange, BybitExchange, BinanceExchange, OrderSide, OrderStatus, OrderType, \
-    ExchangeInsufficientFunds
+from datetime import datetime
 
 import sqlalchemy as sa
 import sqlalchemy.exc
 from sqlalchemy.orm import joinedload, selectinload
 
-from datetime import datetime
+
 from app import models, db
+from app.core.config import base_config
 from app.models import AutoState, ExchangeName, AutoStatus
+from .exchange import (
+    Exchange, BybitExchange, BinanceExchange,
+    OrderSide, OrderStatus, OrderType,
+    ExchangeInsufficientFunds
+)
 
 BASE_SYMBOL = "USDT"
 
@@ -129,7 +134,6 @@ async def auto_mode():
     async with db.session.Session() as session:
 
         users = (await session.scalars(sa.select(models.User).options(
-            joinedload(models.User.base_coin),
             joinedload(models.User.target_coin),
             selectinload(models.User.user_exchanges).options(
                 joinedload(models.UserExchange.exchange)
@@ -158,13 +162,13 @@ async def auto_mode():
                             bybit = BybitExchange(
                                 api_key=user_exchange.api_key,
                                 api_secret=user_exchange.api_secret,
-                                test=True
+                                test=base_config.TEST_API
                             )
                         if user_exchange.exchange.name == ExchangeName.BINANCE:
                             binance = BinanceExchange(
                                 api_key=user_exchange.api_key,
                                 api_secret=user_exchange.api_secret,
-                                test=True
+                                test=base_config.TEST_API
                             )
                     except Exception as e:
                         db.bot_sender.send_task('debug',
