@@ -184,12 +184,12 @@ async def auto_mode():
 
                 if bybit and binance:
 
-                    # connect to db
-                    bybit.connect()
-                    binance.connect()
-
                     # get current price from exchanges
                     try:
+                        # connect to db
+                        bybit.connect()
+                        binance.connect()
+                        
                         bybit_price = bybit.get_price(symbol=SYMBOL_BYBIT)
                         binance_price = binance.get_price(symbol=SYMBOL_BINANCE)
                         if user.debug_mode:
@@ -198,6 +198,7 @@ async def auto_mode():
                     except Exception as e:
                         db.bot_sender.send_task('debug', (user.telegram_id, "WARNING", f"Cant get price. Reconnect..."))
                         continue
+                        
 
                     # stopping auto trade
                     if user.current_state == AutoState.ON_STOP:
@@ -327,14 +328,18 @@ async def auto_mode():
 
                             except ExchangeInsufficientFunds:
                                 db.bot_sender.send_task('need_transfer', (user.telegram_id,))
+                    else:
+                        continue
 
             except requests.exceptions.ProxyError:
                 db.bot_sender.send_task('debug',
                                         (user.telegram_id, "WARNING", f"\nReconnect..."))
+                continue
                 
             except requests.exceptions.HTTPError:
                 db.bot_sender.send_task('debug',
                                         (user.telegram_id, "WARNING", f"\nReconnect..."))
+                continue
 
             except Exception as e:
                 db.bot_sender.send_task('debug',
