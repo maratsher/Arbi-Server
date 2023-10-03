@@ -3,6 +3,7 @@ from datetime import datetime
 import sqlalchemy as sa
 import sqlalchemy.exc
 from sqlalchemy.orm import joinedload, selectinload
+import requests
 
 from app import models, db
 from app.core.config import base_config
@@ -195,7 +196,7 @@ async def auto_mode():
                             db.bot_sender.send_task('debug', (user.telegram_id, "INFO",
                                                               f"\nЦена на binance: <b>{binance_price} {BASE_SYMBOL}</b>\nЦена на Bybit: <b>{bybit_price} {BASE_SYMBOL}</b>\nПотенциальный профит <b>{abs(binance_price * user.volume - bybit_price * user.volume)}</b>"))
                     except Exception as e:
-                        db.bot_sender.send_task('debug', (user.telegram_id, "WARNING", f"Cant get price. {e}"))
+                        db.bot_sender.send_task('debug', (user.telegram_id, "WARNING", f"Cant get price. Reconnect..."))
                         continue
 
                     # stopping auto trade
@@ -327,7 +328,13 @@ async def auto_mode():
                             except ExchangeInsufficientFunds:
                                 db.bot_sender.send_task('need_transfer', (user.telegram_id,))
 
-
+            except requests.exceptions.ProxyError:
+                db.bot_sender.send_task('debug',
+                                        (user.telegram_id, "WARNING", f"\nReconnect..."))
+                
+            except requests.exceptions.HTTPError:
+                db.bot_sender.send_task('debug',
+                                        (user.telegram_id, "WARNING", f"\nReconnect..."))
 
             except Exception as e:
                 db.bot_sender.send_task('debug',
